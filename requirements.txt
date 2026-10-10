@@ -1,4 +1,8 @@
+
 streamlit
 langchain
 langchain-google-genai
 python-dotenv
+langchain-chroma
+langchain-text-splitters
+chromadb

@@ -1,19 +1,19 @@
 import streamlit as st
 
-from agent.llm import get_llm
+from rag.qa import answer_question
 
 
 st.set_page_config(
-    page_title="AI Travel Concierge",
+    page_title="NovaTrip",
     page_icon="✈️",
     layout="wide"
 )
 
 
-st.title("✈️ AI Travel Concierge")
+st.title("✈️ NovaTrip")
 
 st.write(
-    "Your intelligent travel planning assistant."
+    "Your intelligent AI travel planning assistant."
 )
 
 
@@ -30,30 +30,15 @@ if st.button("Ask AI"):
 
     else:
 
-        with st.spinner("Thinking..."):
+        with st.spinner("Searching travel knowledge and thinking..."):
 
             try:
 
-                llm = get_llm()
-
-                response = llm.invoke(user_message)
+                response = answer_question(user_message)
 
                 st.subheader("AI Response")
 
-                if isinstance(response.content, list):
-
-                    text_response = ""
-
-                    for item in response.content:
-
-                        if isinstance(item, dict) and item.get("type") == "text":
-                            text_response += item.get("text", "")
-
-                    st.markdown(text_response)
-
-                else:
-
-                    st.markdown(response.content)
+                st.markdown(response)
 
             except Exception as e:
 

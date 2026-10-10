@@ -5,3 +5,6 @@ __pycache__/
 *.db
 chroma_db/
 .vscode/
+
+app_week1_backup.py
+.pytest_cache/

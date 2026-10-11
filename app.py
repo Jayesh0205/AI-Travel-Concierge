@@ -1,8 +1,6 @@
-
 import streamlit as st
 
 from agent.agent import run_agent
-from agent.tools import set_uploaded_document
 
 
 st.set_page_config(
@@ -47,9 +45,6 @@ if uploaded_file is not None:
         st.error("Could not read this file. Please try another .txt file.")
         uploaded_text = ""
 
-# Make the uploaded text available to the agent's search tool.
-set_uploaded_document(uploaded_text)
-
 user_message = st.text_area(
     "Where would you like to go?",
     placeholder=(
@@ -65,7 +60,10 @@ if st.button("Plan My Trip", type="primary"):
     else:
         with st.spinner("NovaTrip is planning your trip..."):
             try:
-                response = run_agent(user_message)
+                response = run_agent(
+                    user_message,
+                    uploaded_text=uploaded_text,
+                )
                 st.subheader("Your Travel Plan")
                 st.markdown(response)
 

@@ -3,26 +3,26 @@ from langchain.agents import create_agent
 
 from agent.llm import get_llm
 from agent.prompts import SYSTEM_PROMPT
-from agent.tools import TOOLS
+from agent.tools import create_tools
 
 
-def create_novatrip_agent():
-    """Create NovaTrip's AI agent with its registered tools."""
+def create_novatrip_agent(uploaded_text: str = ""):
+    """Create an agent with tools scoped to this request."""
 
     return create_agent(
         model=get_llm(),
-        tools=TOOLS,
+        tools=create_tools(uploaded_text),
         system_prompt=SYSTEM_PROMPT,
     )
 
 
-def run_agent(user_message: str) -> str:
-    """Run the agent and return its final text response."""
+def run_agent(user_message: str, uploaded_text: str = "") -> str:
+    """Run the agent using only this request's uploaded document."""
 
     if not user_message.strip():
         return "Please enter a travel question."
 
-    agent = create_novatrip_agent()
+    agent = create_novatrip_agent(uploaded_text)
 
     result = agent.invoke({
         "messages": [

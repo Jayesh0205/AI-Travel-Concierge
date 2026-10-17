@@ -6,3 +6,4 @@ python-dotenv
 langchain-chroma
 langchain-text-splitters
 chromadb
+ddgs

@@ -2,6 +2,7 @@
 import requests
 from ddgs import DDGS
 from langchain.tools import tool
+from travel_api.client import search_flights
 
 from rag.qa import answer_question
 
@@ -202,9 +203,59 @@ def create_tools(uploaded_text: str = ""):
         except (ValueError, KeyError, TypeError):
             return "The weather service returned an unexpected response."
 
+    @tool
+    def flight_search(
+        origin: str,
+        destination: str,
+        departure_date: str,
+    ) -> str:
+        """Search available flight fares between airports.
+        Use IATA airport codes such as BOM, DEL, or GOI.
+        Date format: YYYY-MM-DD.
+        """
+        result = search_flights(
+            origin.strip().upper(),
+            destination.strip().upper(),
+            departure_date.strip(),
+        )
+
+        if "error" in result:
+            return result["error"]
+
+        itineraries = result.get("itineraries", [])
+
+        if not itineraries:
+            return "No flights were found for those details."
+
+        lines = ["Flight search results:"]
+
+        for flight in itineraries[:5]:
+            price = flight.get("price", {})
+            outbound = flight.get("outbound", {})
+            segments = outbound.get("segments", [])
+            first_segment = segments[0] if segments else {}
+
+            lines.append(
+                f"\nAirline: {outbound.get('carrier', 'Unknown')}"
+                f"\nFlight: {first_segment.get('flight_number', 'N/A')}"
+                f"\nDeparture: {first_segment.get('departure_time_local', 'N/A')}"
+                f"\nArrival: {first_segment.get('arrival_time_local', 'N/A')}"
+                f"\nDuration: {outbound.get('duration_minutes', 'N/A')} minutes"
+                f"\nPrice: {price.get('amount', 'N/A')} "
+                f"{price.get('currency', 'INR')}"
+                f"\nPrice status: {price.get('status', 'Unknown')}"
+            )
+
+        lines.append(
+            "\nPrices and availability can change. Verify before booking."
+        )
+
+        return "\n".join(lines)
+
     return [
         travel_knowledge_search,
         itinerary_planner,
         web_search,
         current_weather,
+flight_search,
     ]

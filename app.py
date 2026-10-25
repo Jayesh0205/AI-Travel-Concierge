@@ -1,7 +1,10 @@
 import streamlit as st
-
 from agent.agent import run_agent
-
+from database.database import (
+    initialize_database,
+    save_search,
+    get_recent_searches,
+)
 
 st.set_page_config(
     page_title="NovaTrip",
@@ -12,10 +15,47 @@ st.set_page_config(
 st.title("✈️ NovaTrip")
 st.write("Your intelligent AI travel planning assistant.")
 
+# Initialize SQLite without preventing the app from opening.
+database_ready = True
+
+try:
+    initialize_database()
+except Exception as e:
+    database_ready = False
+    print(f"Database initialization error: {e}")
+
+# Display previously saved travel searches.
+with st.sidebar:
+    st.header("📚 Travel History")
+
+    if database_ready:
+        try:
+            history = get_recent_searches(10)
+
+            if history:
+                st.caption("Your 10 most recent searches")
+
+                for item in history:
+                    with st.expander(
+                        f"Search #{item['id']} — {item['created_at']}"
+                    ):
+                        st.markdown("**Your request:**")
+                        st.write(item["user_query"])
+
+                        st.markdown("**Generated travel plan:**")
+                        st.markdown(item["assistant_response"])
+            else:
+                st.info("Your saved searches will appear here.")
+        except Exception as e:
+            st.warning("Travel history is temporarily unavailable.")
+            print(f"Database history error: {e}")
+    else:
+        st.warning("Database is temporarily unavailable.")
+
 st.subheader("📄 Upload Travel Information")
 st.caption(
-    "Optional: Upload a .txt document to help NovaTrip answer "
-    "questions using your own travel information."
+    "Optional: Upload a .txt document to help NovaTrip "
+    "answer questions using your own travel information."
 )
 
 uploaded_file = st.file_uploader(
@@ -24,7 +64,6 @@ uploaded_file = st.file_uploader(
 )
 
 uploaded_text = ""
-
 
 if uploaded_file is not None:
     try:
@@ -57,6 +96,7 @@ user_message = st.text_area(
 if st.button("Plan My Trip", type="primary"):
     if not user_message.strip():
         st.warning("Please enter your travel request.")
+
     else:
         with st.spinner("NovaTrip is planning your trip..."):
             try:
@@ -64,8 +104,21 @@ if st.button("Plan My Trip", type="primary"):
                     user_message,
                     uploaded_text=uploaded_text,
                 )
+
                 st.subheader("Your Travel Plan")
                 st.markdown(response)
+
+                # Save the successful response to SQLite.
+                if database_ready:
+                    try:
+                        save_search(user_message, response)
+                        st.success("Travel request saved to your history.")
+                    except Exception as e:
+                        st.warning(
+                            "Your travel plan was generated, "
+                            "but it could not be saved."
+                        )
+                        print(f"Database save error: {e}")
 
             except Exception as e:
                 error_message = str(e)
@@ -83,5 +136,4 @@ if st.button("Plan My Trip", type="primary"):
                         "NovaTrip encountered an error. Please try again."
                     )
 
-                # Print technical details in the terminal, not to users.
                 print(f"NovaTrip error: {e}")

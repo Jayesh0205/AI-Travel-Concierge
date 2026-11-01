@@ -11,4 +11,4 @@ langgraph
 sqlalchemy
 psycopg[binary]
 pytest
-requests
+requestsgrandalf

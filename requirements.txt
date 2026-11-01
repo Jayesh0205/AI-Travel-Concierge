@@ -7,3 +7,8 @@ langchain-chroma
 langchain-text-splitters
 chromadb
 ddgs
+langgraph
+sqlalchemy
+psycopg[binary]
+pytest
+requests

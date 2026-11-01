@@ -1,8 +1,9 @@
 
 import requests
 from ddgs import DDGS
-from langchain.tools import tool
 from travel_api.client import search_flights
+from langchain.tools import tool
+from travel_api.parser import normalize_airport_code
 
 from rag.qa import answer_question
 
@@ -203,6 +204,7 @@ def create_tools(uploaded_text: str = ""):
         except (ValueError, KeyError, TypeError):
             return "The weather service returned an unexpected response."
 
+    
     @tool
     def flight_search(
         origin: str,
@@ -210,12 +212,18 @@ def create_tools(uploaded_text: str = ""):
         departure_date: str,
     ) -> str:
         """Search available flight fares between airports.
-        Use IATA airport codes such as BOM, DEL, or GOI.
+        Accept city names or IATA airport codes.
         Date format: YYYY-MM-DD.
         """
+        try:
+            origin_code = normalize_airport_code(origin)
+            destination_code = normalize_airport_code(destination)
+        except ValueError as exc:
+            return str(exc)
+
         result = search_flights(
-            origin.strip().upper(),
-            destination.strip().upper(),
+            origin_code,
+            destination_code,
             departure_date.strip(),
         )
 
@@ -251,6 +259,7 @@ def create_tools(uploaded_text: str = ""):
         )
 
         return "\n".join(lines)
+
 
     return [
         travel_knowledge_search,

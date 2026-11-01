@@ -173,6 +173,7 @@ def research_travel(state: TravelState):
     return {"research": research}
 
 
+
 def generate_itinerary(state: TravelState):
     """Generate the final travel response using Gemini."""
 
@@ -200,19 +201,29 @@ INSTRUCTIONS:
 """
 
     response = llm.invoke(prompt)
-
     content = response.content
 
     if isinstance(content, str):
         itinerary = content
+
+    elif isinstance(content, list):
+        text_parts = []
+
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+
+        itinerary = "\n\n".join(
+            part for part in text_parts if part
+        )
+
     else:
         itinerary = str(content)
 
     return {"itinerary": itinerary}
 
-
 def save_trip(state: TravelState):
-    """Save the request and generated response in PostgreSQL."""
+    """Save the generated travel response in PostgreSQL."""
 
     try:
         with SessionLocal() as session:
@@ -220,7 +231,6 @@ def save_trip(state: TravelState):
                 query=state["user_request"],
                 response=state["itinerary"],
             )
-
             session.add(record)
             session.commit()
 
@@ -228,7 +238,6 @@ def save_trip(state: TravelState):
         print(f"PostgreSQL saved-search operation failed: {exc}")
 
     return {}
-
 
 def build_travel_graph():
     """Build and compile the NovaTrip travel workflow."""
@@ -247,6 +256,8 @@ def build_travel_graph():
     graph.add_edge("save", END)
 
     return graph.compile()
+
+
 
 
 def run_travel_workflow(

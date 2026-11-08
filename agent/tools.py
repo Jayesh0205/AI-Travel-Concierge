@@ -67,13 +67,18 @@ def create_tools(uploaded_text: str = ""):
                 )
 
             if not results:
-                return "No web search results were found."
+                return (
+                    "No web search results were found. "
+                    "Try a more specific or broader query."
+                )
 
             lines = []
+
             for result in results:
                 title = result.get("title", "Untitled")
                 body = result.get("body", "")
                 url = result.get("href", "")
+
                 lines.append(
                     f"Title: {title}\n"
                     f"Summary: {body}\n"
@@ -82,10 +87,23 @@ def create_tools(uploaded_text: str = ""):
 
             return "\n\n".join(lines)
 
-        except Exception:
+        except Exception as exc:
+            error_message = str(exc)
+
+            if "no results found" in error_message.casefold():
+                return (
+                    "No web search results were found. "
+                    "Try another search query."
+                )
+
+            print(
+                f"DuckDuckGo search error: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
             return (
                 "Web search is temporarily unavailable. "
-                "Check your internet connection and try again."
+                "Other travel research sources may still be available."
             )
 
     @tool

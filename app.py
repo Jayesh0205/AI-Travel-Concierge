@@ -210,18 +210,23 @@ if st.button("Plan My Trip", type="primary"):
             except Exception as e:
                 error_message = str(e)
 
-                if (
-                    "RESOURCE_EXHAUSTED" in error_message
-                    or "429" in error_message
-                ):
-                    st.warning(
-                        "NovaTrip has reached its AI request limit. "
-                        "Please try again after the quota resets."
-                    )
-                else:
-                    st.error(
-                        "NovaTrip encountered an error. "
-                        "Please check the terminal for details."
-                    )
+if any(
+    keyword in error_message.casefold()
+    for keyword in (
+        "resource_exhausted",
+        "429",
+        "quota exceeded",
+        "rate limit",
+    )
+):
+    st.warning(
+        "NovaTrip has reached its AI request limit. "
+        "Please try again after the quota resets."
+        )
+else:
+    st.error(
+        "NovaTrip encountered an error. "
+        "Please check the terminal for details."
+        )
 
-                print(f"NovaTrip error: {e}")
+    print(f"NovaTrip error: {e}")

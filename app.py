@@ -1,5 +1,6 @@
 
 import streamlit as st
+import traceback 
 from agent.agent import run_agent
 from database.database import (
     initialize_database,
@@ -228,5 +229,7 @@ if st.button("Plan My Trip", type="primary"):
                         "NovaTrip encountered an error. "
                         "Please check the terminal for details."
                     )
+                    st.exception(e)  # temporary: shows full traceback in the app
 
-                print(f"NovaTrip error: {e}")
+                traceback.print_exc()
+                print(f"NovaTrip error: {e}", flush=True)

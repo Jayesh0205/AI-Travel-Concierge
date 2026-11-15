@@ -11,4 +11,6 @@ sqlalchemy
 psycopg[binary]
 pytest
 requests
-grandalf
+grandalffastapi
+uvicorn[standard]
+httpx

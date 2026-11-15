@@ -174,6 +174,7 @@ def research_travel(state: TravelState):
 
 
 
+
 def generate_itinerary(state: TravelState):
     """Generate the final travel response using Gemini."""
 
@@ -210,8 +211,12 @@ INSTRUCTIONS:
         text_parts = []
 
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                text_parts.append(block.get("text", ""))
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+
+            elif isinstance(block, str):
+                text_parts.append(block)
 
         itinerary = "\n\n".join(
             part for part in text_parts if part

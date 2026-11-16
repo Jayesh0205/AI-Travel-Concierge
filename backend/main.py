@@ -226,11 +226,6 @@ def get_saved_trips():
     "/api/trips/{trip_id}",
     response_model=SavedTripDetailResponse
 )
-
-@app.get(
-    "/api/trips/{trip_id}",
-    response_model=SavedTripDetailResponse
-)
 def get_saved_trip(trip_id: int):
     """Retrieve one saved itinerary."""
 
@@ -259,14 +254,20 @@ def get_saved_trip(trip_id: int):
             "trip": trip
         }
 
-    except HTTPException:
-        raise
+    except Exception as exc:
+        logger.exception("Failed to retrieve saved trip")
 
-    except Exception:
-        logger.exception("Failed to retrieve saved itinerary")
+        error_message = str(exc).lower()
+
+        if "503" in error_message or "unavailable" in error_message:
+            raise HTTPException(
+                status_code=503,
+                detail="NovaTrip AI is temporarily busy. Please try again in a few minutes."
+            )
+
         raise HTTPException(
             status_code=500,
-            detail="Could not retrieve saved itinerary. Check backend logs."
+            detail="Could not retrieve saved trip. Check backend logs."
         )
 
 

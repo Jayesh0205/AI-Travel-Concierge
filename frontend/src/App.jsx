@@ -7,6 +7,10 @@ XCircle, Gauge, Clock3, Bell, MapPin, CalendarDays, ArrowRight,
   Plane, Sparkles, Clock, Menu, Plus, Globe2,
   Wallet, Users
 } from 'lucide-react'
+const API_BASE = (
+  import.meta.env.VITE_API_URL || 'https://novatrip-api-r3sc.onrender.com'
+).replace(/\/$/, '');
+
 
 const destinations = [
   {
@@ -68,7 +72,7 @@ const handleSearch = async (e) => {
 
   try {
     const response = await fetch(
-      'http://127.0.0.1:8000/api/travel/plan',
+      `${API_BASE}/api/travel/plan`,
       {
         method: 'POST',
         headers: {
@@ -109,7 +113,7 @@ const loadSavedTrips = async () => {
   setTripsError('')
 
   try {
-    const response = await fetch('http://127.0.0.1:8000/api/trips')
+    const response = await fetch(`${API_BASE}/api/trips`)
     const data = await response.json()
 
     if (!response.ok) {
@@ -132,7 +136,7 @@ const openSavedTrip = async (tripId) => {
 
   try {
     const response = await fetch(
-      `http://127.0.0.1:8000/api/trips/${tripId}`
+      `${API_BASE}/api/trips/${tripId}`
     )
 
     const data = await response.json()
@@ -163,9 +167,9 @@ const loadMonitoring = useCallback(async () => {
       healthResponse,
       databaseResponse,
     ] = await Promise.all([
-      fetch('http://127.0.0.1:8000/api/monitoring/overview'),
-      fetch('http://127.0.0.1:8000/health'),
-      fetch('http://127.0.0.1:8000/api/monitoring/database'),
+      fetch(`${API_BASE}/api/monitoring/overview`),
+      fetch(`${API_BASE}/health`),
+      fetch(`${API_BASE}/api/monitoring/database`),
     ])
 
     setBackendOnline(healthResponse.ok)
@@ -422,7 +426,7 @@ const chartPoints = chartData.map((item, index) => ({
         <div>
           <h3 className="font-semibold">FastAPI Backend</h3>
           <p className="text-xs text-slate-400">
-            http://127.0.0.1:8000
+            {API_BASE}
           </p>
         </div>
       </div>

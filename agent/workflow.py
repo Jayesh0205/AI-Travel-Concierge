@@ -226,16 +226,34 @@ INSTRUCTIONS:
         itinerary = str(content)
 
     return {"itinerary": itinerary}
-
 def save_trip(state: TravelState):
     """Save the generated travel response in PostgreSQL."""
 
     try:
+        user_request = state["user_request"]
+
+        origin = state.get("origin", "")
+        destination = state.get("destination", "")
+        departure_date = state.get("departure_date", "")
+
+        # Generate a clean trip title
+        if origin and destination:
+            trip_title = f"{origin} → {destination}"
+        elif destination:
+            trip_title = f"Trip to {destination}"
+        else:
+            trip_title = user_request[:60]
+
+        # Add departure date if available
+        if departure_date:
+            trip_title += f" | {departure_date}"
+
         with SessionLocal() as session:
             record = SavedSearch(
-                query=state["user_request"],
+                query=trip_title,
                 response=state["itinerary"],
             )
+
             session.add(record)
             session.commit()
 
@@ -293,3 +311,109 @@ def run_travel_workflow(
     result = workflow.invoke(initial_state)
 
     return result["itinerary"]
+
+def stream_travel_workflow(
+    user_request: str,
+    uploaded_text: str = "",
+    origin: str = "",
+    destination: str = "",
+    departure_date: str = "",
+):
+    """Stream real-time progress updates from the NovaTrip workflow."""
+
+    if not user_request.strip():
+        yield {
+            "type": "error",
+            "message": "Please enter a travel request."
+        }
+        return
+
+    workflow = build_travel_graph()
+
+    initial_state: TravelState = {
+        "user_request": user_request,
+        "uploaded_text": uploaded_text,
+        "origin": origin,
+        "destination": destination,
+        "departure_date": departure_date,
+        "research": {},
+        "itinerary": "",
+        "errors": [],
+    }
+
+    stages = {
+        "analyze": {
+            "label": "Validating your travel request",
+            "next": "research"
+        },
+        "research": {
+            "label": "Researching your destination",
+            "next": "generate"
+        },
+        "generate": {
+            "label": "Generating your AI itinerary",
+            "next": "save"
+        },
+        "save": {
+            "label": "Saving your travel plan",
+            "next": None
+        }
+    }
+
+    itinerary = ""
+
+    # Start the first stage.
+    yield {
+        "type": "progress",
+        "stage": "analyze",
+        "status": "running",
+        "message": stages["analyze"]["label"]
+    }
+
+    try:
+        for update in workflow.stream(
+            initial_state,
+            stream_mode="updates"
+        ):
+            for node_name, node_output in update.items():
+
+                if node_name == "generate":
+                    itinerary = node_output.get("itinerary", "")
+
+                # Report the completed stage.
+                yield {
+                    "type": "progress",
+                    "stage": node_name,
+                    "status": "completed",
+                    "message": stages[node_name]["label"]
+                }
+
+                # Announce the next stage.
+                next_stage = stages[node_name]["next"]
+
+                if next_stage:
+                    yield {
+                        "type": "progress",
+                        "stage": next_stage,
+                        "status": "running",
+                        "message": stages[next_stage]["label"]
+                    }
+
+    except Exception:
+        yield {
+            "type": "error",
+            "message": "NovaTrip could not complete the itinerary. Please try again."
+        }
+        return
+
+    if not itinerary or not itinerary.strip():
+        yield {
+            "type": "error",
+            "message": "NovaTrip could not generate an itinerary. Please try again."
+        }
+        return
+
+    yield {
+        "type": "complete",
+        "itinerary": itinerary
+    }

@@ -1,4 +1,4 @@
-
+import json
 import logging
 from collections import deque
 from datetime import datetime, timezone
@@ -6,6 +6,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,42 @@ def plan_travel(request: TravelPlanRequest):
             status_code=500,
             detail="Travel planning failed. Check the backend logs."
         )
+
+@app.post("/api/travel/plan/stream")
+def plan_travel_stream(request: TravelPlanRequest):
+    """Stream real-time progress from the NovaTrip LangGraph workflow."""
+
+    def event_generator():
+        try:
+            from agent.workflow import stream_travel_workflow
+
+            for event in stream_travel_workflow(
+                user_request=request.user_request,
+                uploaded_text=request.uploaded_text,
+                origin=request.origin,
+                destination=request.destination,
+                departure_date=request.departure_date
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+
+        except Exception:
+            logger.exception("NovaTrip streaming workflow failed")
+
+            error_event = {
+                "type": "error",
+                "message": "NovaTrip could not complete your travel plan. Please try again."
+            }
+
+            yield f"data: {json.dumps(error_event)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @app.get("/api/trips", response_model=SavedTripsResponse)

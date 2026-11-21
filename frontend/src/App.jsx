@@ -45,6 +45,7 @@ function App() {
   const [message, setMessage] = useState('')
   const [itinerary, setItinerary] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [currentStage, setCurrentStage] = useState('')
   const [lastTravelRequest, setLastTravelRequest] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [savedTrips, setSavedTrips] = useState([])
@@ -63,11 +64,12 @@ const [databaseHealth, setDatabaseHealth] = useState(null)
 const submitTravelRequest = async (requestBody) => {
   setMessage('')
   setItinerary('')
+  setCurrentStage('analyze')
   setIsLoading(true)
 
   try {
     const response = await fetch(
-      `${API_BASE}/api/travel/plan`,
+      `${API_BASE}/api/travel/plan/stream`,
       {
         method: 'POST',
         headers: {
@@ -77,16 +79,72 @@ const submitTravelRequest = async (requestBody) => {
       }
     )
 
-    const data = await response.json()
-
     if (!response.ok) {
+      const errorData = await response.json()
       throw new Error(
-        data.detail || 'Failed to generate your itinerary.'
+        errorData.detail || 'Failed to generate your itinerary.'
       )
     }
 
-    setItinerary(data.itinerary)
-    setMessage('Your AI-generated itinerary is ready!')
+    if (!response.body) {
+      throw new Error('Streaming is not supported by this connection.')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let itineraryReceived = false
+
+    const processEvent = (rawEvent) => {
+      const dataLine = rawEvent
+        .split('\n')
+        .find(line => line.startsWith('data:'))
+
+      if (!dataLine) return
+
+      const event = JSON.parse(dataLine.slice(5).trim())
+
+      if (event.type === 'progress') {
+      setCurrentStage(event.stage)
+      setMessage(event.message)
+      }
+      if (event.type === 'complete') {
+      setCurrentStage('complete')
+      setItinerary(event.itinerary)
+      setMessage('Your AI-generated itinerary is ready!')
+      itineraryReceived = true
+      }
+
+      if (event.type === 'error') {
+        throw new Error(event.message)
+      }
+    }
+
+    while (true) {
+      const { value, done } = await reader.read()
+
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      buffer = buffer.replace(/\r\n/g, '\n')
+
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
+
+      for (const rawEvent of events) {
+        processEvent(rawEvent)
+      }
+    }
+
+    buffer += decoder.decode()
+
+    if (buffer.trim()) {
+      processEvent(buffer)
+    }
+
+    if (!itineraryReceived) {
+      throw new Error('NovaTrip did not return a completed itinerary.')
+    }
 
   } catch (error) {
     console.error('Travel planning error:', error)
@@ -892,8 +950,24 @@ const chartPoints = chartData.map((item, index) => ({
                 </div>
 
                 <h3 className="mt-5 line-clamp-3 text-base font-semibold leading-7">
-                  {trip.query}
-                </h3>
+  {(() => {
+    const parts = trip.query.split(" | ");
+
+    if (parts.length !== 2) return trip.query;
+
+    const date = new Date(`${parts[1]}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) return trip.query;
+
+    const formattedDate = date.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+
+    return `${parts[0]} | ${formattedDate}`;
+  })()}
+</h3>
 
                 <p className="mt-4 flex items-center gap-2 text-xs text-slate-500">
                   <CalendarDays size={14} />
@@ -1025,25 +1099,103 @@ const chartPoints = chartData.map((item, index) => ({
 
               <div className="md:col-span-2 xl:col-span-4">
                 <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-4 text-sm font-bold transition hover:bg-violet-500"
-                >
-                  <Sparkles size={18} />
-                  {isLoading ? (
-  <>
-    <span className="animate-spin">✦</span>
-    Generating your itinerary...
-  </>
-) : (
-  <>
-    <Sparkles size={18} />
-    Plan my trip with AI
-  </>
-)}
-                </button>
+  type="submit"
+  disabled={isLoading}
+  className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-4 text-sm font-bold transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+>
+  {isLoading ? (
+    <>
+      <span className="animate-spin">✦</span>
+      Generating your itinerary...
+    </>
+  ) : (
+    <>
+      <Sparkles size={18} />
+      Plan my trip with AI
+    </>
+  )}
+</button>
 
-{message && (
+
+{isLoading && (
+  <div className="mt-5 rounded-2xl border border-violet-500/20 bg-violet-500/10 p-5">
+
+    <div className="mb-4 flex items-center justify-between">
+      <span className="text-sm font-semibold text-violet-200">
+        NovaTrip is preparing your journey
+      </span>
+
+      <span className="animate-pulse text-xs text-violet-300">
+        In progress...
+      </span>
+    </div>
+
+    {[
+      { id: 'analyze', label: 'Validating your travel request' },
+      { id: 'research', label: 'Researching your destination' },
+      { id: 'generate', label: 'Generating your AI itinerary' },
+      { id: 'save', label: 'Saving your travel plan' },
+    ].map((stage, index, stages) => {
+      const stageOrder = stages.findIndex(
+        item => item.id === currentStage
+      )
+
+      const isCompleted = index < stageOrder
+      const isActive = stage.id === currentStage
+
+      return (
+        <div key={stage.id} className="mb-4 flex items-center gap-3">
+
+          <span
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+              isCompleted
+                ? 'bg-green-500 text-white'
+                : isActive
+                  ? 'animate-pulse bg-violet-500 text-white'
+                  : 'bg-white/10 text-slate-400'
+            }`}
+          >
+            {isCompleted ? '✓' : index + 1}
+          </span>
+
+          <span
+            className={`text-sm ${
+              isCompleted
+                ? 'text-green-300'
+                : isActive
+                  ? 'font-semibold text-violet-200'
+                  : 'text-slate-400'
+            }`}
+          >
+            {stage.label}
+          </span>
+
+        </div>
+      )
+    })}
+
+    <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10">
+      <div
+        className="h-full rounded-full bg-violet-500 transition-all duration-500"
+        style={{
+          width: `${
+            currentStage === 'analyze' ? 10 :
+            currentStage === 'research' ? 35 :
+            currentStage === 'generate' ? 65 :
+            currentStage === 'save' ? 90 : 100
+          }%`
+        }}
+      />
+    </div>
+
+    <p className="mt-3 text-xs text-slate-400">
+      This may take a little while. Please don't close this page.
+    </p>
+
+  </div>
+)}
+
+{message && !isLoading && (
   <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-4 text-sm text-violet-200">
     {message}
   </div>

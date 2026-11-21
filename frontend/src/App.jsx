@@ -45,6 +45,7 @@ function App() {
   const [message, setMessage] = useState('')
   const [itinerary, setItinerary] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [lastTravelRequest, setLastTravelRequest] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [savedTrips, setSavedTrips] = useState([])
   const [selectedTrip, setSelectedTrip] = useState(null)
@@ -58,14 +59,8 @@ const [backendOnline, setBackendOnline] = useState(false)
 const [databaseHealth, setDatabaseHealth] = useState(null)
 
   
-const handleSearch = async (e) => {
-  e.preventDefault()
 
-  if (!destination.trim()) {
-    setMessage('Please enter your destination first.')
-    return
-  }
-
+const submitTravelRequest = async (requestBody) => {
   setMessage('')
   setItinerary('')
   setIsLoading(true)
@@ -78,13 +73,7 @@ const handleSearch = async (e) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          user_request: `Plan a travel itinerary from ${origin || 'my location'} to ${destination} for ${travellers}. Departure date: ${travelDate || 'flexible'}. Include attractions, activities, travel suggestions and an estimated budget.`,
-          origin: origin,
-          destination: destination,
-          departure_date: travelDate,
-          uploaded_text: '',
-        }),
+        body: JSON.stringify(requestBody),
       }
     )
 
@@ -104,6 +93,33 @@ const handleSearch = async (e) => {
     setMessage(error.message || 'Unable to connect to NovaTrip API.')
   } finally {
     setIsLoading(false)
+  }
+}
+
+const handleSearch = async (e) => {
+  e.preventDefault()
+
+  if (!destination.trim()) {
+    setMessage('Please enter your destination first.')
+    return
+  }
+
+  const requestBody = {
+    user_request: `Plan a travel itinerary from ${origin || 'my location'} to ${destination} for ${travellers}. Departure date: ${travelDate || 'flexible'}. Include attractions, activities, travel suggestions and an estimated budget.`,
+    origin: origin,
+    destination: destination,
+    departure_date: travelDate,
+    uploaded_text: '',
+  }
+
+  setLastTravelRequest(requestBody)
+
+  await submitTravelRequest(requestBody)
+}
+
+const handleRetry = () => {
+  if (lastTravelRequest && !isLoading) {
+    submitTravelRequest(lastTravelRequest)
   }
 }
 
@@ -1010,6 +1026,7 @@ const chartPoints = chartData.map((item, index) => ({
               <div className="md:col-span-2 xl:col-span-4">
                 <button
                   type="submit"
+                  disabled={isLoading}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-4 text-sm font-bold transition hover:bg-violet-500"
                 >
                   <Sparkles size={18} />
@@ -1030,6 +1047,21 @@ const chartPoints = chartData.map((item, index) => ({
   <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-4 text-sm text-violet-200">
     {message}
   </div>
+)}
+
+{message && !itinerary && lastTravelRequest && (
+  <button
+    type="button"
+    onClick={handleRetry}
+    disabled={isLoading}
+    className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-violet-500/40 px-5 py-3 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    <RefreshCw
+      size={16}
+      className={isLoading ? 'animate-spin' : ''}
+    />
+    {isLoading ? 'Retrying...' : 'Retry'}
+  </button>
 )}
 
                 {itinerary && (

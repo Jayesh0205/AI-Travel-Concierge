@@ -1026,6 +1026,12 @@ const chartPoints = chartData.map((item, index) => ({
 )}
                 </button>
 
+{message && (
+  <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-4 text-sm text-violet-200">
+    {message}
+  </div>
+)}
+
                 {itinerary && (
   <div className="mt-6 rounded-2xl border border-violet-500/30 bg-[#0b1020] p-6">
     <div className="mb-4 flex items-center gap-2 text-violet-300">

@@ -4,10 +4,14 @@ from collections import deque
 from datetime import datetime, timezone
 from time import perf_counter
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Query
+# from streamlit import user
+from backend.auth import require_admin
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from backend.auth import get_current_user
+from database.pg_models import User
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +133,36 @@ class SavedTripDetailResponse(BaseModel):
     status: str
     trip: SavedTripDetail
 
+# Profile response model
+class ProfileResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    full_name: str | None
+    avatar_url: str | None
+    role: str
+    created_at: datetime
+
+
+class ProfileResponseEnvelope(BaseModel):
+    status: str
+    profile: ProfileResponse
+
+
+# Profile update request model
+class ProfileUpdateRequest(BaseModel):
+    full_name: str | None = Field(default=None, max_length=150)
+    avatar_url: str | None = Field(default=None, max_length=500)
+
+
+# Saved Places request model
+class SavedPlaceCreate(BaseModel):
+    place_name: str = Field(min_length=1, max_length=150)
+    country: str = Field(min_length=1, max_length=100)
+    image_url: str | None = Field(default=None, max_length=1000)
+    tag: str | None = Field(default=None, max_length=100)
+
+
 
 @app.get("/", response_model=HomeResponse)
 def home():
@@ -146,9 +180,11 @@ def health_check():
         "service": "NovaTrip Backend"
     }
 
-
 @app.post("/api/travel/plan", response_model=TravelPlanResponse)
-def plan_travel(request: TravelPlanRequest):
+def plan_travel(
+    request: TravelPlanRequest,
+    current_user: User = Depends(get_current_user),
+):
     """Generate an itinerary using the existing LangGraph workflow."""
 
     try:
@@ -159,7 +195,8 @@ def plan_travel(request: TravelPlanRequest):
             uploaded_text=request.uploaded_text,
             origin=request.origin,
             destination=request.destination,
-            departure_date=request.departure_date
+            departure_date=request.departure_date,
+            user_id=current_user.id,
         )
 
         if not itinerary or not itinerary.strip():
@@ -185,8 +222,14 @@ def plan_travel(request: TravelPlanRequest):
         )
 
 @app.post("/api/travel/plan/stream")
-def plan_travel_stream(request: TravelPlanRequest):
+def plan_travel_stream(
+    request: TravelPlanRequest,
+    current_user: User = Depends(get_current_user),
+):
     """Stream real-time progress from the NovaTrip LangGraph workflow."""
+
+    # Store the authenticated user's database ID
+    user_id = current_user.id
 
     def event_generator():
         try:
@@ -197,7 +240,8 @@ def plan_travel_stream(request: TravelPlanRequest):
                 uploaded_text=request.uploaded_text,
                 origin=request.origin,
                 destination=request.destination,
-                departure_date=request.departure_date
+                departure_date=request.departure_date,
+                user_id=user_id,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
 
@@ -220,10 +264,11 @@ def plan_travel_stream(request: TravelPlanRequest):
         }
     )
 
-
 @app.get("/api/trips", response_model=SavedTripsResponse)
-def get_saved_trips():
-    """Retrieve the latest saved itineraries."""
+def get_saved_trips(
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve only the authenticated user's saved itineraries."""
 
     try:
         from database.pg_database import SessionLocal
@@ -232,6 +277,7 @@ def get_saved_trips():
         with SessionLocal() as session:
             records = (
                 session.query(SavedSearch)
+                .filter(SavedSearch.user_id == current_user.id)
                 .order_by(SavedSearch.created_at.desc())
                 .limit(100)
                 .all()
@@ -246,10 +292,7 @@ def get_saved_trips():
                 for record in records
             ]
 
-        return {
-            "status": "success",
-            "trips": trips
-        }
+        return {"status": "success", "trips": trips}
 
     except Exception:
         logger.exception("Failed to retrieve saved trips")
@@ -263,15 +306,25 @@ def get_saved_trips():
     "/api/trips/{trip_id}",
     response_model=SavedTripDetailResponse
 )
-def get_saved_trip(trip_id: int):
-    """Retrieve one saved itinerary."""
+def get_saved_trip(
+    trip_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve one saved itinerary belonging to the authenticated user."""
 
     try:
         from database.pg_database import SessionLocal
         from database.pg_models import SavedSearch
 
         with SessionLocal() as session:
-            record = session.get(SavedSearch, trip_id)
+            record = (
+                session.query(SavedSearch)
+                .filter(
+                    SavedSearch.id == trip_id,
+                    SavedSearch.user_id == current_user.id,
+                )
+                .first()
+            )
 
             if record is None:
                 raise HTTPException(
@@ -291,26 +344,147 @@ def get_saved_trip(trip_id: int):
             "trip": trip
         }
 
-    except Exception as exc:
+    except HTTPException:
+        raise
+
+    except Exception:
         logger.exception("Failed to retrieve saved trip")
-
-        error_message = str(exc).lower()
-
-        if "503" in error_message or "unavailable" in error_message:
-            raise HTTPException(
-                status_code=503,
-                detail="NovaTrip AI is temporarily busy. Please try again in a few minutes."
-            )
-
         raise HTTPException(
             status_code=500,
             detail="Could not retrieve saved trip. Check backend logs."
         )
 
+    # Get authenticated user's profile
+@app.get(
+    "/api/profile",
+    response_model=ProfileResponseEnvelope
+)
+def get_profile(
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve the authenticated user's profile."""
 
+    try:
+        from database.pg_database import SessionLocal
+
+        with SessionLocal() as session:
+            user = session.get(User, current_user.id)
+
+            if user is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="User profile not found."
+                )
+
+            profile = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "avatar_url": user.avatar_url,
+                "role": user.role,
+                "created_at": user.created_at,
+            }
+
+        return {
+            "status": "success",
+            "profile": profile
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Failed to retrieve user profile")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve profile."
+        )
+    # Update authenticated user's profile
+
+@app.put(
+    "/api/profile",
+    response_model=ProfileResponseEnvelope
+)
+def update_profile(
+    request: ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Update authenticated user's profile information."""
+
+    try:
+        from database.pg_database import SessionLocal
+
+        updates = request.model_dump(exclude_unset=True)
+
+        if not updates:
+            raise HTTPException(
+                status_code=400,
+                detail="Please provide at least one profile field."
+            )
+
+        if "full_name" in updates and updates["full_name"] is not None:
+            updates["full_name"] = updates["full_name"].strip()
+
+            if not updates["full_name"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Full name cannot be empty."
+                )
+
+        if "avatar_url" in updates and updates["avatar_url"] is not None:
+            updates["avatar_url"] = updates["avatar_url"].strip()
+
+            if not updates["avatar_url"].startswith(("https://", "http://")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Profile image must use a valid HTTP or HTTPS URL."
+                )
+
+        with SessionLocal() as session:
+            user = session.get(User, current_user.id)
+
+            if user is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="User profile not found."
+                )
+
+            for field, value in updates.items():
+                setattr(user, field, value)
+
+            session.commit()
+            session.refresh(user)
+
+            profile = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "avatar_url": user.avatar_url,
+                "role": user.role,
+                "created_at": user.created_at,
+            }
+
+        return {
+            "status": "success",
+            "profile": profile
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Failed to update user profile")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not update profile."
+        )
 # Monitoring Dashboard API
 @app.get("/api/monitoring/overview")
-def monitoring_overview():
+def monitoring_overview(
+    admin=Depends(require_admin),
+):
     total = monitoring_stats["total_requests"]
     failed = monitoring_stats["failed_requests"]
 
@@ -337,7 +511,9 @@ def monitoring_overview():
 
 # PostgreSQL Database Health Monitoring
 @app.get("/api/monitoring/database")
-def database_health():
+def database_health(
+    admin=Depends(require_admin),
+):
     start_time = perf_counter()
 
     try:
@@ -368,3 +544,284 @@ def database_health():
             "message": "Database connection is unavailable."
         }
 
+
+# ==========================================
+# ADMIN PANEL - USER MANAGEMENT
+# ==========================================
+
+@app.get("/api/admin/users")
+def get_admin_users(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    admin: User = Depends(require_admin),
+):
+    """Retrieve registered users. Admin access only."""
+
+    try:
+        from database.pg_database import SessionLocal
+
+        with SessionLocal() as session:
+            total_users = session.query(User).count()
+
+            records = (
+                session.query(User)
+                .order_by(User.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+
+            users = [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "full_name": user.full_name,
+                    "avatar_url": user.avatar_url,
+                    "role": user.role,
+                    "created_at": user.created_at,
+                }
+                for user in records
+            ]
+
+        return {
+            "status": "success",
+            "total_users": total_users,
+            "limit": limit,
+            "offset": offset,
+            "users": users,
+        }
+
+    except Exception:
+        logger.exception("Failed to retrieve admin user list")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve users. Check backend logs."
+        )
+
+
+# ==========================================
+# SAVED PLACES - USER MANAGEMENT
+# ==========================================
+
+@app.get("/api/saved-places")
+def get_saved_places(
+    current_user: User = Depends(get_current_user),
+):
+    """Get only the logged-in user's saved places."""
+
+    try:
+        from database.pg_database import SessionLocal
+        from database.pg_models import SavedPlace
+
+        with SessionLocal() as session:
+            records = (
+                session.query(SavedPlace)
+                .filter(SavedPlace.user_id == current_user.id)
+                .order_by(SavedPlace.created_at.desc())
+                .all()
+            )
+
+            places = [
+                {
+                    "id": place.id,
+                    "place_name": place.place_name,
+                    "country": place.country,
+                    "image_url": place.image_url,
+                    "tag": place.tag,
+                    "created_at": place.created_at,
+                }
+                for place in records
+            ]
+
+        return {
+            "status": "success",
+            "total": len(places),
+            "places": places,
+        }
+
+    except Exception:
+        logger.exception("Failed to retrieve saved places")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve saved places."
+        )
+
+
+@app.post("/api/saved-places")
+def create_saved_place(
+    request: SavedPlaceCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Save a place for the authenticated user."""
+
+    try:
+        from sqlalchemy.exc import IntegrityError
+        from database.pg_database import SessionLocal
+        from database.pg_models import SavedPlace
+
+        place_name = request.place_name.strip()
+        country = request.country.strip()
+
+        if not place_name or not country:
+            raise HTTPException(
+                status_code=400,
+                detail="Place name and country are required."
+            )
+
+        if request.image_url and not request.image_url.startswith(
+            ("https://", "http://")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Image URL must use HTTP or HTTPS."
+            )
+
+        with SessionLocal() as session:
+            place = SavedPlace(
+                user_id=current_user.id,
+                place_name=place_name,
+                country=country,
+                image_url=request.image_url,
+                tag=request.tag,
+            )
+
+            session.add(place)
+
+            try:
+                session.commit()
+                session.refresh(place)
+            except IntegrityError:
+                session.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail="This place is already saved."
+                )
+
+            result = {
+                "id": place.id,
+                "place_name": place.place_name,
+                "country": place.country,
+                "image_url": place.image_url,
+                "tag": place.tag,
+                "created_at": place.created_at,
+            }
+
+        return {
+            "status": "success",
+            "message": "Place saved successfully.",
+            "place": result,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Failed to save place")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save place."
+        )
+
+
+@app.delete("/api/saved-places/{place_id}")
+def delete_saved_place(
+    place_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete only a place owned by the authenticated user."""
+
+    try:
+        from database.pg_database import SessionLocal
+        from database.pg_models import SavedPlace
+
+        with SessionLocal() as session:
+            place = (
+                session.query(SavedPlace)
+                .filter(
+                    SavedPlace.id == place_id,
+                    SavedPlace.user_id == current_user.id,
+                )
+                .first()
+            )
+
+            if place is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Saved place not found."
+                )
+
+            session.delete(place)
+            session.commit()
+
+        return {
+            "status": "success",
+            "message": "Saved place removed successfully.",
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Failed to delete saved place")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not delete saved place."
+        )
+
+
+# ==========================================
+# ADMIN PANEL - SAVED PLACES OVERVIEW
+# ==========================================
+
+@app.get("/api/admin/saved-places")
+def get_admin_saved_places(
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    admin: User = Depends(require_admin),
+):
+    """Admin-only overview of all users' saved places."""
+
+    try:
+        from database.pg_database import SessionLocal
+        from database.pg_models import SavedPlace
+
+        with SessionLocal() as session:
+            total = session.query(SavedPlace).count()
+
+            records = (
+                session.query(SavedPlace, User.username, User.email)
+                .join(User, SavedPlace.user_id == User.id)
+                .order_by(SavedPlace.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+
+            places = [
+                {
+                    "id": place.id,
+                    "user_id": place.user_id,
+                    "username": username,
+                    "email": email,
+                    "place_name": place.place_name,
+                    "country": place.country,
+                    "image_url": place.image_url,
+                    "tag": place.tag,
+                    "created_at": place.created_at,
+                }
+                for place, username, email in records
+            ]
+
+        return {
+            "status": "success",
+            "total": total,
+            "places": places,
+        }
+
+    except Exception:
+        logger.exception("Failed to retrieve admin saved places")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve saved places."
+        )

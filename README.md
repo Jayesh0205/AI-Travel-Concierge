@@ -1,52 +1,116 @@
 # NovaTrip — AI Travel Concierge ✈️
 
-NovaTrip is an AI-powered travel assistant built with Python, Streamlit, LangChain, and Google Gemini. It helps users explore destinations, retrieve travel information, generate suggested itineraries, check weather, search the web, and find flight options.
+**Your intelligent AI-powered travel planning companion.**
 
-## 🌟 Features
+NovaTrip is a full-stack AI travel application that helps users discover destinations, research travel information, generate personalized itineraries, and manage their travel plans through an interactive interface.
 
-- **AI Travel Assistant:** Responds to travel-related questions using Google Gemini.
-- **Smart Itinerary Planning:** Generates suggested travel plans based on user requests.
-- **Travel Knowledge Search (RAG):** Retrieves relevant information from a travel knowledge base.
-- **Document Upload:** Supports `.txt` documents to provide additional travel context.
-- **Flight Search:** Retrieves flight options through the Ignav API, including available flight details, schedules, and displayed fares.
-- **Weather Tool:** Provides weather information through the configured weather integration.
-- **Web Search:** Searches the web for additional travel information.
-- **Streamlit Interface:** Provides an interactive web application.
-- **API Error Handling:** Handles Gemini API quota errors and other supported failure cases.
-- **Environment Configuration:** Keeps API keys in environment variables or deployment secrets.
+It combines AI agents, retrieval-augmented generation (RAG), travel research integrations, and secure user authentication to provide a unified travel-planning experience.
+
+## 🌍 Live Application
+
+- **Frontend:** https://novatrip-frontend.vercel.app/
+- **Backend API:** https://novatrip-api-r3sc.onrender.com
+- **API Documentation:** https://novatrip-api-r3sc.onrender.com/docs
+- **GitHub Repository:** https://github.com/Jayesh0205/AI-Travel-Concierge
+
+## ✨ Features
+
+### 🤖 AI Travel Assistant
+- AI-powered travel conversations using Google Gemini.
+- Intelligent travel planning with LangGraph workflows.
+- Personalized itinerary generation.
+- Streaming responses and travel-planning progress updates.
+- Friendly handling of API errors and temporary service failures.
+
+### 🧠 RAG-Based Travel Knowledge
+- Retrieval-Augmented Generation using ChromaDB.
+- Travel document loading, splitting, embedding and retrieval.
+- Context-aware responses using relevant travel information.
+
+### ✈️ Travel Research
+- Flight search integration.
+- Weather information.
+- Web-based travel research.
+- Destination discovery and travel recommendations.
+
+### 👤 Authentication & Profile
+- User authentication with Supabase Auth.
+- Protected application features.
+- User profile management.
+- Profile avatar uploads using Supabase Storage.
+
+### ❤️ Saved Places & Trips
+- Save and remove favourite destinations.
+- Persistent saved places using PostgreSQL.
+- View saved travel plans and trip history.
+- Reopen previously generated travel plans.
+
+### 🛡️ Admin Panel
+- Protected administrator access.
+- Registered-user overview.
+- Saved-places overview.
+- Administrative statistics.
+- Monitoring dashboard for application and API activity.
+- Backend-enforced role-based authorization.
+
+### 🎨 User Interface
+- Modern React-based interface.
+- Responsive layouts.
+- Interactive travel dashboard.
+- Itinerary copy and TXT export options.
+- Loading, error and empty states.
 
 ## 🛠️ Technology Stack
 
-| Component | Technology |
+| Category | Technologies |
 |---|---|
-| Programming Language | Python |
-| Frontend | Streamlit |
-| AI Agent Framework | LangChain |
-| Large Language Model | Google Gemini |
-| Knowledge Retrieval | LangChain and ChromaDB |
-| Embeddings | Google Gemini embeddings |
-| Flight Search | Ignav API |
-| Weather | Configured weather API integration |
-| Configuration | python-dotenv |
-| Version Control | Git and GitHub |
+| Frontend | React, Vite, Tailwind CSS |
+| Backend | Python, FastAPI |
+| AI Model | Google Gemini |
+| Agent Framework | LangGraph |
+| Knowledge Retrieval | RAG, ChromaDB |
+| Authentication | Supabase Auth |
+| Avatar Storage | Supabase Storage |
+| Database | PostgreSQL, SQLAlchemy |
+| API Communication | REST API, Streaming |
+| Icons | Lucide React |
+| Deployment | Vercel, Render |
+| Version Control | Git, GitHub |
+
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TD
+    A[User] --> B[React Frontend]
+    B --> C[Supabase Authentication]
+    B --> D[FastAPI Backend]
+    D --> E[Authentication & Authorization]
+    E --> F[AI Travel Workflow]
+    F --> G[Google Gemini]
+    F --> H[LangGraph]
+    F --> I[RAG Pipeline]
+    I --> J[ChromaDB]
+    F --> K[Travel Research Tools]
+    D --> L[PostgreSQL Database]
+    D --> M[Admin & Monitoring APIs]
+    B --> N[Supabase Storage]
+```
 
 ## 📁 Project Structure
 
 ```text
 AI-Travel-Concierge/
+│
 ├── agent/
-│   ├── agent.py
-│   ├── llm.py
-│   ├── prompts.py
-│   └── tools.py
-├── data/
-│   └── travel_documents/
-│       ├── goa.txt
-│       └── travel_tips.txt
+│   └── workflow.py
+│
+├── backend/
+│   ├── auth.py
+│   └── main.py
+│
 ├── database/
-│   ├── crud.py
-│   ├── database.py
-│   └── models.py
+│   └── pg_models.py
+│
 ├── rag/
 │   ├── embeddings.py
 │   ├── loader.py
@@ -54,103 +118,183 @@ AI-Travel-Concierge/
 │   ├── retriever.py
 │   ├── splitter.py
 │   └── vectorstore.py
+│
 ├── travel_api/
-│   ├── client.py
-│   └── parser.py
-├── app.py
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AdminSavedPlaces.jsx
+│   │   │   ├── AdminUsers.jsx
+│   │   │   ├── Profile.jsx
+│   │   │   └── SavedPlaces.jsx
+│   │   ├── lib/
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   ├── package.json
+│   └── vite.config.js
+│
+├── data/
+├── tests/
 ├── requirements.txt
+├── .env.example
 └── README.md
 ```
 
-*Note: The structure above highlights the main application modules. Additional files, including tests and configuration files, may also be present.*
+*This is a simplified overview of the main project modules.*
 
-## 🚀 Installation and Setup
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- Python installed on your computer
-- Git installed
-- API credentials for the integrations you want to use
+- Python 3.10 or a compatible project-supported version.
+- Node.js and npm.
+- Git.
+- PostgreSQL.
+- Google Gemini API credentials.
+- Supabase project credentials.
 
 ### 1. Clone the Repository
 
-```bash
+```cmd
 git clone https://github.com/Jayesh0205/AI-Travel-Concierge.git
 cd AI-Travel-Concierge
 ```
 
-### 2. Create a Virtual Environment
+### 2. Set Up the Backend
 
-On Windows:
+Create and activate a virtual environment:
 
 ```cmd
 python -m venv .venv
 .venv\Scripts\activate
 ```
 
-### 3. Install Dependencies
+Install Python dependencies:
 
 ```cmd
 python -m pip install -r requirements.txt
 ```
 
-### 4. Configure API Keys
+Configure the backend environment variables using the project's `.env.example` file. Add the required database, Gemini and Supabase configuration values.
 
-Create a `.env` file in the project root directory.
+**Never commit your actual `.env` file.**
 
-Add your own API credentials:
+### 3. Start the Backend
 
-```dotenv
-GOOGLE_API_KEY=your_google_api_key
-IGNAV_API_KEY=your_ignav_api_key
-```
-
-Replace the example values with your actual credentials. Do not commit your real API keys to GitHub.
-
-Other integrations may require additional configuration, depending on the current application settings.
-
-### 5. Run the Application
+From the project root:
 
 ```cmd
-streamlit run app.py
+uvicorn backend.main:app --reload
 ```
 
-Streamlit will provide a local URL that you can open in your browser.
+Backend development URL:
 
-## ⚙️ How It Works
+```text
+http://127.0.0.1:8000
+```
 
-1. The user submits a travel-related request through the Streamlit interface.
-2. The LangChain agent interprets the request and selects an appropriate available tool when needed.
-3. For travel knowledge questions, the RAG pipeline retrieves relevant information from the configured travel documents.
-4. For flight searches, the flight-search tool requests available results from the Ignav API.
-5. Weather and web-search tools provide additional information when appropriate.
-6. Google Gemini generates a response using the available information.
-7. The application displays the result in the Streamlit interface.
+API documentation:
 
-## 🌐 Project Links
+```text
+http://127.0.0.1:8000/docs
+```
 
-- **GitHub Repository:** https://github.com/Jayesh0205/AI-Travel-Concierge
-- **Deployed Application:** https://novatrip-jayesh.streamlit.app
+### 4. Set Up the Frontend
+
+Open another terminal:
+
+```cmd
+cd frontend
+npm install
+```
+
+Create `frontend/.env.local` and configure the frontend variables required by the project. For local backend communication, configure:
+
+```dotenv
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+Add the required Supabase frontend configuration using the variable names expected by `src/lib/supabase.js`.
+
+### 5. Start the Frontend
+
+```cmd
+npm run dev
+```
+
+Open the local Vite URL shown in the terminal, usually:
+
+```text
+http://localhost:5173
+```
 
 ## 🔐 Security
 
-- Store API credentials in `.env` locally and in the deployment platform's secrets configuration when deployed.
-- Never commit `.env` or expose API keys in screenshots, logs, or public repositories.
-- If an API key is accidentally exposed, revoke or rotate it through the relevant provider.
+NovaTrip uses multiple security measures:
 
-## ⚠️ Limitations
+- Supabase Auth for user authentication.
+- Backend verification of authentication tokens.
+- Role-based authorization for administrative endpoints.
+- User-specific access to saved places and travel data.
+- Server-side authorization checks for protected operations.
+- Environment variables for sensitive credentials.
 
-- AI-generated responses may contain inaccuracies and should be verified when making travel decisions.
-- Flight schedules, displayed fares, and availability may change. Confirm the details with the provider before booking.
-- Flight search depends on valid Ignav API credentials, API availability, and returned inventory.
-- Google Gemini usage is subject to model availability, quota, and API limits.
-- Document upload currently supports `.txt` files.
-- The application provides travel information and flight-search results; it does not itself guarantee a booking.
+**Important:** Never expose Supabase service-role keys, database passwords, Gemini API keys or other private credentials in frontend code or public repositories.
+
+## 🧪 Testing
+
+Run the available Python tests from the project root:
+
+```cmd
+python -m pytest
+```
+
+Check backend syntax:
+
+```cmd
+python -m py_compile backend\main.py backend\auth.py
+```
+
+Build the frontend:
+
+```cmd
+cd frontend
+npm run build
+```
+
+## 🌐 Deployment
+
+NovaTrip uses separate deployment platforms for its frontend and backend.
+
+| Service | Platform |
+|---|---|
+| Frontend | Vercel |
+| Backend | Render |
+| Authentication | Supabase |
+| Database | PostgreSQL |
+| Avatar Storage | Supabase Storage |
+
+Production environment variables must be configured securely in the corresponding deployment dashboards.
 
 ## 🔮 Future Improvements
 
-- Expand travel-document formats and improve retrieval quality.
-- Add itinerary export options.
-- Improve automated testing and error monitoring.
-- Enhance the user interface and travel-planning workflow.
-- Expand travel integrations and improve handling of API failures.
+- Detailed security and user activity audit logs.
+- Enhanced administrative analytics.
+- More travel and booking integrations.
+- Improved RAG document management.
+- Additional automated tests.
+- Further optimization of AI response time and reliability.
+
+## 👨‍💻 Developer
+
+**Jayesh Gujar**
+
+B.Tech Computer Engineering Student
+
+- GitHub: [Jayesh0205](https://github.com/Jayesh0205)
+- Project: [NovaTrip — AI Travel Concierge](https://github.com/Jayesh0205/AI-Travel-Concierge)
+
+---
+
+*NovaTrip — Explore smarter. Plan better. Travel further.* ✈️

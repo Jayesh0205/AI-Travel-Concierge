@@ -17,6 +17,7 @@ class TravelState(TypedDict):
     origin: str
     destination: str
     departure_date: str
+    user_id: int | None
     research: dict[str, Any]
     itinerary: str
     errors: list[str]
@@ -250,6 +251,7 @@ def save_trip(state: TravelState):
 
         with SessionLocal() as session:
             record = SavedSearch(
+                user_id=state.get("user_id"),
                 query=trip_title,
                 response=state["itinerary"],
             )
@@ -289,6 +291,8 @@ def run_travel_workflow(
     origin: str = "",
     destination: str = "",
     departure_date: str = "",
+    user_id: int | None = None,
+
 ) -> str:
     """Run the complete NovaTrip workflow."""
 
@@ -306,6 +310,7 @@ def run_travel_workflow(
         "research": {},
         "itinerary": "",
         "errors": [],
+        "user_id": user_id,
     }
 
     result = workflow.invoke(initial_state)
@@ -318,6 +323,7 @@ def stream_travel_workflow(
     origin: str = "",
     destination: str = "",
     departure_date: str = "",
+    user_id: int | None = None,
 ):
     """Stream real-time progress updates from the NovaTrip workflow."""
 
@@ -339,6 +345,7 @@ def stream_travel_workflow(
         "research": {},
         "itinerary": "",
         "errors": [],
+        "user_id": user_id,
     }
 
     stages = {

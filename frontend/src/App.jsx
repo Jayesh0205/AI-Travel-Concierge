@@ -1,11 +1,17 @@
 import ReactMarkdown from 'react-markdown'
+import Auth from './components/Auth'
+import { supabase } from './lib/supabase'
+import Profile from './components/Profile'
+import SavedPlaces from './components/SavedPlaces'
+import AdminUsers from './components/AdminUsers'
+import AdminSavedPlaces from './components/AdminSavedPlaces'
 import { useState, useEffect, useCallback } from 'react'
 import {
   Compass, LayoutDashboard, Map, Heart, Settings,
   Search, Activity, Server, RefreshCw, CheckCircle2,
 XCircle, Gauge, Clock3, Bell, MapPin, CalendarDays, ArrowRight,
-  Plane, Sparkles, Clock, Menu, Plus, Globe2,
-  Wallet, Users
+  Plane, Sparkles, Clock, Menu, Plus, Globe2, UserRound,
+  Wallet, Users, LogOut, Copy, Download
 } from 'lucide-react'
 const API_BASE = (
   import.meta.env.VITE_API_URL || 'https://novatrip-api-r3sc.onrender.com'
@@ -49,6 +55,8 @@ function App() {
   const [lastTravelRequest, setLastTravelRequest] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [savedTrips, setSavedTrips] = useState([])
+  const [savedPlaces, setSavedPlaces] = useState([])
+  const [savingPlace, setSavingPlace] = useState('')
   const [selectedTrip, setSelectedTrip] = useState(null)
   const [tripsLoading, setTripsLoading] = useState(false)
   const [tripsError, setTripsError] = useState('')
@@ -58,8 +66,225 @@ const [monitoringLoading, setMonitoringLoading] = useState(false)
 const [monitoringError, setMonitoringError] = useState('')
 const [backendOnline, setBackendOnline] = useState(false)
 const [databaseHealth, setDatabaseHealth] = useState(null)
+//AUTHORIZATION State
+const [session, setSession] = useState(null)
+const [authLoading, setAuthLoading] = useState(true)
+const [profileName, setProfileName] = useState('')
+const [profileAvatar, setProfileAvatar] = useState('')
+const [profileRole, setProfileRole] = useState('user')
+const [itineraryCopied, setItineraryCopied] = useState(false)
 
-  
+const handleProfileUpdated = useCallback((name, avatarUrl) => {
+  setProfileName(name || '')
+  setProfileAvatar(avatarUrl || '')
+}, [])
+
+useEffect(() => {
+  let mounted = true
+
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (mounted) {
+      setSession(session)
+      setAuthLoading(false)
+    }
+  })
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    setSession(session)
+    setAuthLoading(false)
+  })
+
+  return () => {
+    mounted = false
+    subscription.unsubscribe()
+  }
+}, [])
+
+// Logged-in user's profile details
+const displayName =
+  profileName ||
+  session?.user?.user_metadata?.full_name ||
+  session?.user?.email ||
+  'Traveler'
+
+const userInitial = displayName.charAt(0).toUpperCase()
+
+// Logout from NovaTrip
+const handleLogout = async () => {
+  const { error } = await supabase.auth.signOut()
+
+  if (error) {
+    console.error('Logout failed:', error)
+    setMessage(error.message)
+  }
+}
+
+// Get the latest Supabase access token for API requests
+const getAccessToken = useCallback(async () => {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession()
+
+  if (error) {
+    throw error
+  }
+
+  if (!session?.access_token) {
+    throw new Error('Please sign in again to continue.')
+  }
+
+  return session.access_token
+}, [])
+
+// Load saved destinations from PostgreSQL
+const loadSavedPlaces = useCallback(async () => {
+  try {
+    const token = await getAccessToken()
+
+    const response = await fetch(`${API_BASE}/api/saved-places`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Unable to load saved places.')
+    }
+
+    setSavedPlaces(data.places || [])
+  } catch (error) {
+    console.error('Loading saved places failed:', error)
+  }
+}, [getAccessToken])
+
+// Load favourites when the user is logged in
+useEffect(() => {
+  if (session) {
+    loadSavedPlaces()
+  } else {
+    setSavedPlaces([])
+  }
+}, [session, loadSavedPlaces])
+
+// Save or remove a destination
+const toggleSavedPlace = async (place) => {
+  if (savingPlace) return
+
+  setSavingPlace(place.name)
+
+  try {
+    const token = await getAccessToken()
+
+    const existingPlace = savedPlaces.find(
+      item =>
+        item.place_name.toLowerCase() === place.name.toLowerCase() &&
+        item.country.toLowerCase() === place.country.toLowerCase()
+    )
+
+    if (existingPlace) {
+      const response = await fetch(
+        `${API_BASE}/api/saved-places/${existingPlace.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Unable to remove destination.')
+      }
+
+      setSavedPlaces(current =>
+        current.filter(item => item.id !== existingPlace.id)
+      )
+
+      setMessage(`${place.name} removed from Saved Places.`)
+    } else {
+      const response = await fetch(`${API_BASE}/api/saved-places`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          place_name: place.name,
+          country: place.country,
+          image_url: `https://images.unsplash.com/${place.image}?auto=format&fit=crop&w=900&q=85`,
+          tag: place.tag,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Unable to save destination.')
+      }
+
+      setSavedPlaces(current => [...current, data.place])
+      setMessage(`${place.name} added to Saved Places!`)
+    }
+  } catch (error) {
+    console.error('Saving destination failed:', error)
+    setMessage(error.message || 'Something went wrong.')
+  } finally {
+    setSavingPlace('')
+  }
+}
+
+// Load profile automatically after login.
+useEffect(() => {
+  let cancelled = false
+
+  if (!session) {
+    setProfileName('')
+    setProfileAvatar('')
+    setProfileRole('user')
+    return
+  }
+
+  const loadHeaderProfile = async () => {
+    try {
+      const token = await getAccessToken()
+
+      const response = await fetch(`${API_BASE}/api/profile`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Unable to load profile.')
+      }
+
+      if (!cancelled) {
+        setProfileName(data.profile.full_name || '')
+        setProfileAvatar(data.profile.avatar_url || '')
+        setProfileRole(data.profile.role || 'user')
+      }
+    } catch (error) {
+      if (!cancelled) {
+        console.error('Loading header profile failed:', error)
+      }
+    }
+  }
+
+  loadHeaderProfile()
+
+  return () => {
+    cancelled = true
+  }
+}, [session, getAccessToken])
 
 const submitTravelRequest = async (requestBody) => {
   setMessage('')
@@ -68,16 +293,19 @@ const submitTravelRequest = async (requestBody) => {
   setIsLoading(true)
 
   try {
-    const response = await fetch(
-      `${API_BASE}/api/travel/plan/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      }
-    )
+  const accessToken = await getAccessToken()
+
+  const response = await fetch(
+    `${API_BASE}/api/travel/plan/stream`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(requestBody),
+    }
+  )
 
     if (!response.ok) {
       const errorData = await response.json()
@@ -175,6 +403,41 @@ const handleSearch = async (e) => {
   await submitTravelRequest(requestBody)
 }
 
+const handleDownloadItinerary = () => {
+  if (!itinerary) return
+
+  const blob = new Blob([itinerary], {
+    type: 'text/plain;charset=utf-8',
+  })
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = 'NovaTrip-Itinerary.txt'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+
+  URL.revokeObjectURL(url)
+}
+
+const handleCopyItinerary = async () => {
+  if (!itinerary) return
+
+  try {
+    await navigator.clipboard.writeText(itinerary)
+    setItineraryCopied(true)
+
+    window.setTimeout(() => {
+      setItineraryCopied(false)
+    }, 2000)
+  } catch (error) {
+    console.error('Copy itinerary failed:', error)
+    setMessage('Unable to copy itinerary. Please try again.')
+  }
+}
+
 const handleRetry = () => {
   if (lastTravelRequest && !isLoading) {
     submitTravelRequest(lastTravelRequest)
@@ -187,7 +450,13 @@ const loadSavedTrips = async () => {
   setTripsError('')
 
   try {
-    const response = await fetch(`${API_BASE}/api/trips`)
+    const accessToken = await getAccessToken()
+
+const response = await fetch(`${API_BASE}/api/trips`, {
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+  },
+})
     const data = await response.json()
 
     if (!response.ok) {
@@ -209,9 +478,16 @@ const openSavedTrip = async (tripId) => {
   setTripsError('')
 
   try {
-    const response = await fetch(
-      `${API_BASE}/api/trips/${tripId}`
-    )
+    const accessToken = await getAccessToken()
+
+const response = await fetch(
+  `${API_BASE}/api/trips/${tripId}`,
+  {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  }
+)
 
     const data = await response.json()
 
@@ -231,29 +507,53 @@ const openSavedTrip = async (tripId) => {
 
 
 
+
 const loadMonitoring = useCallback(async () => {
   setMonitoringLoading(true)
   setMonitoringError('')
 
   try {
+    // Get the current user's Supabase access token
+    const accessToken = await getAccessToken()
+
+    if (!accessToken) {
+      throw new Error('Please sign in to access monitoring.')
+    }
+
+    const authHeaders = {
+      Authorization: `Bearer ${accessToken}`,
+    }
+
     const [
       metricsResponse,
       healthResponse,
       databaseResponse,
     ] = await Promise.all([
-      fetch(`${API_BASE}/api/monitoring/overview`),
+      fetch(`${API_BASE}/api/monitoring/overview`, {
+        headers: authHeaders,
+      }),
       fetch(`${API_BASE}/health`),
-      fetch(`${API_BASE}/api/monitoring/database`),
+      fetch(`${API_BASE}/api/monitoring/database`, {
+        headers: authHeaders,
+      }),
     ])
 
     setBackendOnline(healthResponse.ok)
 
     if (!metricsResponse.ok) {
-      throw new Error('Unable to retrieve monitoring statistics.')
+      throw new Error(
+        metricsResponse.status === 403
+          ? 'Admin access required.'
+          : 'Unable to retrieve monitoring statistics.'
+      )
     }
 
     if (!databaseResponse.ok) {
-      throw new Error('Unable to retrieve database health.')
+      throw new Error(
+        databaseResponse.status === 403
+          ? 'Admin access required.'
+          : 'Unable to retrieve database health.'
+      )
     }
 
     const metricsData = await metricsResponse.json()
@@ -271,7 +571,8 @@ const loadMonitoring = useCallback(async () => {
   } finally {
     setMonitoringLoading(false)
   }
-}, [])
+}, [getAccessToken])
+
 
 
 useEffect(() => {
@@ -317,12 +618,36 @@ const chartPoints = chartData.map((item, index) => ({
   { name: 'Dashboard', icon: LayoutDashboard },
   { name: 'Explore', icon: Compass },
   { name: 'My Trips', icon: Map },
-  { name: 'Monitoring', icon: Activity },
+
+  ...(profileRole === 'admin'
+    ? [
+        { name: 'Monitoring', icon: Activity },
+        { name: 'Admin Panel', icon: Users },
+        { name: 'Saved Places Overview', icon: Heart },
+      ]
+    : []),
+
   { name: 'Saved Places', icon: Heart },
+  { name: 'Profile', icon: UserRound },
 ]
 
+// Show loading screen while checking the login session
+if (authLoading) {
   return (
-    <div className="min-h-screen bg-[#0b1020] text-white">
+    <div className="flex min-h-screen items-center justify-center bg-[#0b1020] text-white">
+      Loading NovaTrip...
+    </div>
+  )
+}
+
+// Show login/signup screen when the user is not authenticated
+if (!session) {
+  return <Auth />
+}
+
+// Existing NovaTrip dashboard
+return (
+  <div className="min-h-screen bg-[#0b1020] text-white">
 
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -332,100 +657,148 @@ const chartPoints = chartData.map((item, index) => ({
         />
       )}
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-white/10 bg-[#10172a] px-6 py-7 transition-transform duration-300 lg:translate-x-0 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
 
-        <div className="mb-12 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-600 shadow-lg shadow-violet-600/30">
-            <Compass size={25} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-wide">NovaTrip</h1>
-            <p className="text-xs text-slate-400">AI Travel Concierge</p>
-          </div>
-        </div>
+{/* Sidebar */}
+<aside
+  className={`fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col overflow-hidden border-r border-white/10 bg-[#10172a] px-6 py-5 transition-transform duration-300 lg:translate-x-0 ${
+    sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+  }`}
+>
+  {/* Logo - Fixed at the top */}
+  <div className="mb-8 flex shrink-0 items-center gap-3">
+    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-600 shadow-lg shadow-violet-600/30">
+      <Compass size={25} />
+    </div>
+    <div>
+      <h1 className="text-xl font-bold tracking-wide">NovaTrip</h1>
+      <p className="text-xs text-slate-400">AI Travel Concierge</p>
+    </div>
+  </div>
 
-        <p className="mb-4 text-xs font-semibold uppercase tracking-[2px] text-slate-500">
-          Workspace
-        </p>
+  {/* Scrollable middle section */}
+  <div className="min-h-0 flex-1 overflow-y-auto pr-1">
 
-        <nav className="space-y-2">
-          {navigation.map((item) => {
-            const Icon = item.icon
+    <p className="mb-4 text-xs font-semibold uppercase tracking-[2px] text-slate-500">
+      Workspace
+    </p>
 
-            return (
-              <button
-                key={item.name}
-                onClick={() => {
-  setActivePage(item.name)
-  setSidebarOpen(false)
+    <nav className="space-y-2">
+      {navigation.map((item) => {
+        const Icon = item.icon
 
-  if (item.name === 'My Trips') {
-    setSelectedTrip(null)
-    loadSavedTrips()
-  }
-
-  if (item.name === 'Monitoring') {
-    loadMonitoring()
-  }
-}}
-                className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition ${
-                  activePage === item.name
-                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/20'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Icon size={19} />
-                {item.name}
-              </button>
-            )
-          })}
-        </nav>
-
-        <div className="mt-10">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[2px] text-slate-500">
-            Preferences
-          </p>
-
+        return (
           <button
-            onClick={() => setActivePage('Settings')}
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm ${
-              activePage === 'Settings'
-                ? 'bg-violet-600 text-white'
+            key={item.name}
+            onClick={() => {
+              setActivePage(item.name)
+              setSidebarOpen(false)
+
+              if (item.name === 'My Trips') {
+                setSelectedTrip(null)
+                loadSavedTrips()
+              }
+
+              if (item.name === 'Monitoring') {
+                loadMonitoring()
+              }
+            }}
+            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition ${
+              activePage === item.name
+                ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/20'
                 : 'text-slate-400 hover:bg-white/5 hover:text-white'
             }`}
           >
-            <Settings size={19} />
-            Settings
+            <Icon size={19} />
+            {item.name}
           </button>
-        </div>
+        )
+      })}
+    </nav>
 
-        <div className="mt-auto rounded-2xl border border-violet-400/20 bg-gradient-to-br from-violet-600/20 to-blue-600/10 p-4">
-          <Sparkles className="mb-3 text-violet-400" size={23} />
-          <h3 className="font-semibold">Your AI Travel Buddy</h3>
-          <p className="mt-2 text-xs leading-5 text-slate-400">
-            Discover destinations and create your next unforgettable journey.
-          </p>
-          <button
-            onClick={() => setActivePage('Explore')}
-            className="mt-4 flex items-center gap-2 text-sm font-semibold text-violet-300"
-          >
-            Explore now <ArrowRight size={15} />
-          </button>
-        </div>
+    {/* Preferences */}
+    <div className="mt-8">
+      <p className="mb-4 text-xs font-semibold uppercase tracking-[2px] text-slate-500">
+        Preferences
+      </p>
 
-        <div className="mt-6 flex items-center gap-3 border-t border-white/10 pt-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-blue-500 font-bold">
-            J
-          </div>
-          <div>
-            <p className="text-sm font-semibold">Traveler</p>
-            <p className="text-xs text-slate-500">Personal account</p>
-          </div>
-        </div>
-      </aside>
+      <button
+        onClick={() => {
+          setActivePage('Settings')
+          setSidebarOpen(false)
+        }}
+        className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm ${
+          activePage === 'Settings'
+            ? 'bg-violet-600 text-white'
+            : 'text-slate-400 hover:bg-white/5 hover:text-white'
+        }`}
+      >
+        <Settings size={19} />
+        Settings
+      </button>
+    </div>
+
+    {/* AI Travel Buddy Card */}
+    <div className="my-6 rounded-2xl border border-violet-400/20 bg-gradient-to-br from-violet-600/20 to-blue-600/10 p-4">
+      <Sparkles className="mb-3 text-violet-400" size={23} />
+      <h3 className="font-semibold">Your AI Travel Buddy</h3>
+
+      <p className="mt-2 text-xs leading-5 text-slate-400">
+        Discover destinations and create your next unforgettable journey.
+      </p>
+
+      <button
+        onClick={() => {
+          setActivePage('Explore')
+          setSidebarOpen(false)
+        }}
+        className="mt-4 flex items-center gap-2 text-sm font-semibold text-violet-300"
+      >
+        Explore now <ArrowRight size={15} />
+      </button>
+    </div>
+
+  </div>
+
+  {/* Account and Logout - Fixed at the bottom */}
+  <div className="mt-3 shrink-0 border-t border-white/10 pt-4">
+
+    <div className="flex items-center gap-3">
+      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-blue-500">
+  {profileAvatar ? (
+    <img
+      src={profileAvatar}
+      alt="Profile"
+      className="h-full w-full object-cover"
+    />
+  ) : (
+    <div className="flex h-full w-full items-center justify-center font-bold">
+      {userInitial}
+    </div>
+  )}
+</div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">
+          {displayName}
+        </p>
+        <p className="text-xs text-slate-500">
+          Personal account
+        </p>
+      </div>
+    </div>
+
+    <button
+      onClick={handleLogout}
+      className="mt-3 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-red-400 transition hover:bg-red-500/10"
+    >
+      <LogOut size={18} />
+      Logout
+    </button>
+
+  </div>
+
+</aside>
+
 
       {/* Main content */}
       <main className="min-h-screen lg:ml-64">
@@ -453,15 +826,30 @@ const chartPoints = chartData.map((item, index) => ({
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-violet-500" />
             </button>
 
-            <div className="hidden h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-blue-500 font-bold sm:flex">
-              J
-            </div>
+            <div className="hidden h-10 w-10 overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-blue-500 sm:block">
+  {profileAvatar ? (
+    <img
+      src={profileAvatar}
+      alt="Profile"
+      className="h-full w-full object-cover"
+    />
+  ) : (
+    <div className="flex h-full w-full items-center justify-center font-bold">
+      {userInitial}
+    </div>
+  )}
+</div>
           </div>
         </header>
 
         <div className="mx-auto max-w-7xl space-y-10 px-5 py-9 md:px-10">
-	
-{activePage === 'Monitoring' ? (
+{activePage === 'Saved Places' ? (
+  <SavedPlaces getAccessToken={getAccessToken} />
+) : activePage === 'Admin Panel' ? (
+  <AdminUsers getAccessToken={getAccessToken} />
+) : activePage === 'Saved Places Overview' ? (
+  <AdminSavedPlaces getAccessToken={getAccessToken} />
+) : activePage === 'Monitoring' ? (
   <section className="space-y-7">
 
     {/* Monitoring Header */}
@@ -987,7 +1375,9 @@ const chartPoints = chartData.map((item, index) => ({
       </>
     )}
 
-  </section>
+    </section>
+) : activePage === 'Profile' ? (
+  <Profile onProfileUpdated={handleProfileUpdated} />
 ) : (
   <>
 
@@ -1218,12 +1608,31 @@ const chartPoints = chartData.map((item, index) => ({
 
                 {itinerary && (
   <div className="mt-6 rounded-2xl border border-violet-500/30 bg-[#0b1020] p-6">
-    <div className="mb-4 flex items-center gap-2 text-violet-300">
-      <Sparkles size={20} />
-      <h3 className="text-lg font-bold">
-        Your AI Travel Itinerary
-      </h3>
-    </div>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+  <div className="flex items-center gap-2 text-violet-300">
+    <Sparkles size={20} />
+    <h3 className="text-lg font-bold">
+      Your AI Travel Itinerary
+    </h3>
+  </div>
+
+  <button
+    type="button"
+    onClick={handleCopyItinerary}
+    className="flex items-center gap-2 rounded-xl border border-violet-500/40 px-4 py-2 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/10"
+  >
+    <Copy size={16} />
+    {itineraryCopied ? 'Copied!' : 'Copy Itinerary'}
+  </button>
+  <button
+  type="button"
+  onClick={handleDownloadItinerary}
+  className="flex items-center gap-2 rounded-xl border border-emerald-500/40 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10"
+>
+  <Download size={16} />
+  Download
+</button>
+</div>
 
     <div className="prose prose-invert max-w-none text-sm leading-7 text-slate-300
   [&_h3]:mt-6 [&_h3]:mb-3 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-violet-300
@@ -1278,12 +1687,33 @@ const chartPoints = chartData.map((item, index) => ({
                       {place.tag}
                     </span>
                     <button
-                      onClick={() => setMessage(`${place.name} added to your inspiration list. Choose it in the destination field to plan a trip.`)}
-                      className="absolute right-4 top-4 rounded-full bg-black/50 p-2 backdrop-blur hover:bg-violet-600"
-                      aria-label={`Save ${place.name}`}
-                    >
-                      <Heart size={17} />
-                    </button>
+  onClick={() => toggleSavedPlace(place)}
+  disabled={savingPlace === place.name}
+  className="absolute right-4 top-4 rounded-full bg-black/50 p-2 backdrop-blur transition hover:bg-violet-600 disabled:opacity-50"
+  aria-label={`Save or remove ${place.name}`}
+  title={
+    savedPlaces.some(
+      item =>
+        item.place_name.toLowerCase() === place.name.toLowerCase() &&
+        item.country.toLowerCase() === place.country.toLowerCase()
+    )
+      ? 'Remove from Saved Places'
+      : 'Save to Saved Places'
+  }
+>
+  <Heart
+    size={17}
+    className={
+      savedPlaces.some(
+        item =>
+          item.place_name.toLowerCase() === place.name.toLowerCase() &&
+          item.country.toLowerCase() === place.country.toLowerCase()
+      )
+        ? 'fill-pink-500 text-pink-500'
+        : 'text-white'
+    }
+  />
+</button>
                   </div>
 
                   <div className="p-5">
@@ -1323,7 +1753,6 @@ const chartPoints = chartData.map((item, index) => ({
               { icon: Clock, title: 'Save Time', desc: 'Keep your travel research organized.' },
             ].map((item) => {
               const Icon = item.icon
-
               return (
                 <div key={item.title} className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#121b30] p-5">
                   <div className="rounded-xl bg-violet-500/10 p-3 text-violet-300">
